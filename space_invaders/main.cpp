@@ -7,7 +7,7 @@
 #include <fcntl.h>
 #include <algorithm>
 
-// ==================== Funções utilitárias ====================
+// ==================== Utilitários ====================
 
 void setNonBlockingInput(bool enable) {
     static struct termios oldt, newt;
@@ -23,22 +23,22 @@ void setNonBlockingInput(bool enable) {
 }
 
 void clearScreen() {
-    std::cout << "\033[2J\033[1;1H";
+    std::cout << "\033[2J\033[H";
 }
 
 // ==================== Estruturas ====================
 
-const int WIDTH = 40;
+const int WIDTH = 80;
 const int HEIGHT = 20;
 
 struct Player {
     int x;
-    char symbol = '^';
+    char symbol = '@';
 };
 
 struct Bullet {
     int x, y;
-    char symbol = '|';
+    char symbol = '$';
 };
 
 struct Enemy {
@@ -47,6 +47,19 @@ struct Enemy {
     char symbol = 'W';
 };
 
+// ==================== Funções auxiliares ====================
+
+void drawBorder(std::vector<std::string> &screen) {
+    for (int x = 0; x < WIDTH + 2; x++) {
+        screen[0][x] = '#';
+        screen[HEIGHT + 1][x] = '#';
+    }
+    for (int y = 0; y < HEIGHT + 2; y++) {
+        screen[y][0] = '#';
+        screen[y][WIDTH + 1] = '#';
+    }
+}
+
 // ==================== Código principal ====================
 
 int main() {
@@ -54,7 +67,7 @@ int main() {
     std::vector<Bullet> bullets;
     std::vector<Enemy> enemies;
 
-    // Cria formação de inimigos
+    // Formação inicial de inimigos
     int rows = 3, cols = 8;
     int startX = 5, startY = 2, spacing = 4;
     for (int r = 0; r < rows; r++) {
@@ -67,7 +80,7 @@ int main() {
     setNonBlockingInput(true);
 
     auto lastFrame = std::chrono::steady_clock::now();
-    int direction = 1; // 1 = direita, -1 = esquerda
+    int direction = 1;
     int frameCounter = 0;
     int score = 0;
 
@@ -82,18 +95,14 @@ int main() {
         }
 
         // ===== Atualização =====
-
-        // Atualiza balas
         for (auto &b : bullets) b.y -= 1;
         bullets.erase(
             std::remove_if(bullets.begin(), bullets.end(),
                            [](const Bullet &b) { return b.y < 0; }),
             bullets.end());
 
-        // Movimento dos inimigos a cada N frames
         frameCounter++;
         if (frameCounter % 10 == 0) {
-            // Verifica se algum inimigo chegou na borda
             bool bounce = false;
             for (auto &e : enemies) {
                 if (!e.alive) continue;
@@ -104,7 +113,6 @@ int main() {
                 }
             }
 
-            // Se encostar, desce e muda direção
             if (bounce) {
                 direction *= -1;
                 for (auto &e : enemies)
@@ -120,22 +128,22 @@ int main() {
             for (auto &e : enemies) {
                 if (e.alive && b.x == e.x && b.y == e.y) {
                     e.alive = false;
-                    b.y = -1; // marca bala para remover
+                    b.y = -1;
                     score += 10;
                 }
             }
         }
+
         bullets.erase(
             std::remove_if(bullets.begin(), bullets.end(),
                            [](const Bullet &b) { return b.y < 0; }),
             bullets.end());
 
-        // Fim de jogo se algum inimigo atinge o player
         for (auto &e : enemies) {
             if (e.alive && e.y >= HEIGHT - 1) {
-                running = false;
                 clearScreen();
-                std::cout << "GAME OVER!\nPontuação final: " << score << "\n";
+                std::cout << "\n\n   💀 GAME OVER 💀\n\n";
+                std::cout << "   Pontuação final: " << score << "\n\n";
                 setNonBlockingInput(false);
                 return 0;
             }
@@ -144,25 +152,28 @@ int main() {
         // ===== Renderização =====
         clearScreen();
 
-        std::vector<std::string> screen(HEIGHT, std::string(WIDTH, ' '));
+        std::vector<std::string> screen(HEIGHT + 2, std::string(WIDTH + 2, ' '));
+        drawBorder(screen);
 
         // Player
-        screen[HEIGHT - 1][player.x] = player.symbol;
+        screen[HEIGHT][player.x + 1] = player.symbol;
 
         // Bullets
         for (auto &b : bullets)
-            if (b.y >= 0 && b.y < HEIGHT) screen[b.y][b.x] = b.symbol;
+            if (b.y >= 0 && b.y < HEIGHT)
+                screen[b.y + 1][b.x + 1] = b.symbol;
 
         // Enemies
         for (auto &e : enemies)
-            if (e.alive && e.y >= 0 && e.y < HEIGHT) screen[e.y][e.x] = e.symbol;
+            if (e.alive && e.y >= 0 && e.y < HEIGHT)
+                screen[e.y + 1][e.x + 1] = e.symbol;
 
+        // HUD
         for (auto &line : screen) std::cout << line << "\n";
+        std::cout << "Score: " << score
+                  << " | [A/D mover] [ESPACO atirar] [Q sair]\n";
 
-        std::cout << "\nScore: " << score
-                  << " | [A/D mover, ESPAÇO atirar, Q sair]\n";
-
-        // ===== Controle de FPS =====
+        // ===== FPS =====
         auto now = std::chrono::steady_clock::now();
         auto frameTime = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastFrame);
         if (frameTime.count() < 33)
